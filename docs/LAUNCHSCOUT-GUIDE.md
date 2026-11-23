@@ -14,10 +14,11 @@ O nome **LaunchScout** substitui o nome usado no briefing original.
 - Filtros por tipo, período, produtor e interesse.
 - Ordenação por relevância, data mais próxima, descoberta recente e lista pessoal.
 - Favoritos persistidos no navegador.
-- Descoberta simulada com estado de carregamento e feedback visual.
+- Descoberta real via MCP com estado de carregamento e feedback visual.
 - Estado vazio para combinações de filtros sem resultado.
 - Configuração de múltiplas conexões MCP com criação, edição, pausa, ativação e remoção.
-- Consulta ao endpoint MCP ativo via JSON-RPC `tools/call`, usando `search_launches`, autorização Bearer e CORS.
+- Servidor Node unificado com endpoint `/api/mcp`, geração de token, persistência e ferramentas `search_launches`, `save_launch`, `get_launch_details` e `get_platform_statistics`.
+- Consulta multiagente via JSON-RPC `initialize` e `tools/call`, usando autorização Bearer e deduplicação de resultados.
 - Persistência de configurações e favoritos em `localStorage`.
 - Interface responsiva para desktop, tablet e mobile.
 
@@ -26,7 +27,7 @@ O nome **LaunchScout** substitui o nome usado no briefing original.
 ```text
 launchscout/
 ├── index.html                 Entrada HTML e metadados
-├── package.json               Scripts e dependência do Vite
+├── package.json               Scripts do Vite e servidor Node
 ├── package-lock.json          Lockfile de instalação
 ├── app.config.ts              Branding do projeto Webdev
 ├── README.md                  Instruções rápidas
@@ -35,6 +36,7 @@ launchscout/
 │   └── LAUNCHSCOUT-GUIDE.md   Este guia
 ├── public/
 │   └── manus-routes.json      Manifesto de rotas Webdev
+├── server.js                  MCP, autenticação e persistência em produção
 ├── src/
 │   ├── main.js                Dados, estado, renderização e interações
 │   └── styles.css             Direção visual Noir Signal
@@ -58,21 +60,21 @@ npm run build
 
 A saída fica em `dist/`.
 
-## 5. Publicação no GitHub Pages
+## 5. Publicação no Hostinger
 
-O projeto é uma aplicação estática Vite. Uma Action do GitHub pode executar `npm ci` e `npm run build`, e então publicar o diretório `dist/` usando GitHub Pages.
+Execute `npm ci && npm run start:production` no ambiente Node do Hostinger. O servidor entrega `dist/` e o MCP no mesmo domínio. Configure `LAUNCHSCOUT_DATA_DIR` para um diretório persistente e faça backup de `data/launchscout.json`.
 
-As credenciais não devem ser gravadas no código-fonte. Na versão atual, os tokens inseridos na interface são mantidos apenas no `localStorage` do navegador do usuário. Para maior segurança em produção, recomenda-se um proxy backend ou um servidor MCP intermediário.
+As credenciais não são gravadas no código-fonte. O token é gerado no servidor e salvo apenas como hash; ele é exibido uma única vez e o navegador mantém a cópia necessária para chamadas autenticadas.
 
 ## 6. Configuração MCP
 
 1. Abra **Configurações MCP** na barra lateral.
-2. Clique em **Adicionar outra** para criar uma fonte.
-3. Informe um nome, o endpoint MCP e, se necessário, o token Bearer.
+2. Clique em **Gerar token no LaunchScout Core** para criar o token interno, ou em **Adicionar agente** para uma fonte externa.
+3. Confirme o endpoint interno `/api/mcp` e o papel do agente.
 4. Salve a conexão.
-5. Use **Buscar novidades** para tentar consultar a fonte ativa.
+5. Use **Testar agora** e depois **Buscar novidades**.
 
-Para funcionar em uma página publicada no GitHub Pages, o endpoint precisa:
+Para uma instalação externa, o endpoint precisa:
 
 - aceitar HTTPS;
 - permitir a origem do domínio publicado via CORS;
@@ -80,7 +82,7 @@ Para funcionar em uma página publicada no GitHub Pages, o endpoint precisa:
 - aceitar requisições do navegador;
 - responder em um formato compatível com o transporte configurado.
 
-Quando a fonte não responde, o LaunchScout mantém a experiência disponível em modo demo com dados locais. Quando a fonte responde sem resultados, a interface informa que não foram encontrados lançamentos e não inventa registros.
+Quando uma fonte não responde, o LaunchScout exibe a falha e não injeta resultados simulados. Quando a fonte responde sem resultados, a interface informa que não foram encontrados lançamentos.
 
 ## 7. Modelo de dados de lançamento
 

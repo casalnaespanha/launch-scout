@@ -19,6 +19,7 @@ const icon = (name, size = 18) => {
   return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.spark}</svg>`;
 };
 
+const INTERNAL_MCP_ENDPOINT = `${window.location.origin}/api/mcp`;
 const state = {
   launches: JSON.parse(localStorage.getItem('launchscout-launches') || 'null') || [],
   query: '',
@@ -33,10 +34,11 @@ const state = {
   view: 'catalog',
   settingsOpen: false,
   editingConnectionId: 'primary',
+  pendingToken: '',
   lastSync: localStorage.getItem('launchscout-last-sync') || 'agora mesmo',
   config: JSON.parse(localStorage.getItem('launchscout-config') || 'null') || {
     agentName: 'LaunchScout Scout',
-    connections: [{ id: 'primary', name: 'LaunchRadar WordPress', role: 'Catálogo principal', endpoint: 'https://sculpted-orange-giraffe-25.hostingersite.com/wp-json/launchradar/v1/mcp', token: '', connected: true }]
+    connections: [{ id: 'primary', name: 'LaunchScout Core', role: 'Catálogo unificado', endpoint: INTERNAL_MCP_ENDPOINT, token: '', connected: true }]
   }
 };
 
@@ -44,13 +46,13 @@ if (!Array.isArray(state.config.connections)) {
   state.config.connections = [{
     id: 'primary',
     name: state.config.agentName || 'LaunchScout Scout',
-    endpoint: state.config.endpoint || 'https://sculpted-orange-giraffe-25.hostingersite.com/wp-json/launchradar/v1/mcp',
+    endpoint: state.config.endpoint || INTERNAL_MCP_ENDPOINT,
     token: state.config.token || '',
     connected: state.config.connected !== false,
     role: 'Catálogo principal'
   }];
 }
-state.config.connections = state.config.connections.map((connection) => connection.endpoint?.includes('mcp.launchscout.local') ? { ...connection, endpoint: 'https://sculpted-orange-giraffe-25.hostingersite.com/wp-json/launchradar/v1/mcp' } : connection);
+state.config.connections = state.config.connections.map((connection) => (connection.endpoint?.includes('mcp.launchscout.local') || connection.endpoint?.includes('sculpted-orange-giraffe-25.hostingersite.com')) ? { ...connection, endpoint: INTERNAL_MCP_ENDPOINT, token: '', name: connection.id === 'primary' ? 'LaunchScout Core' : connection.name } : connection);
 const activeConnections = () => state.config.connections.filter((connection) => connection.connected && connection.endpoint);
 const activeConnection = () => activeConnections()[0] || state.config.connections[0];
 state.launches = state.launches.filter((item) => !String(item.registration || '').includes('example.com') && item.source !== 'demo.launchscout');
@@ -179,9 +181,9 @@ function renderSettingsModal() {
   const currentName = editing?.name || '';
   const currentRole = editing?.role || 'Agente de descoberta';
   const currentEndpoint = editing?.endpoint || '';
-  const currentToken = editing?.token || '';
+  const currentToken = editing?.token || state.pendingToken || '';
   const currentConnected = editing?.connected !== false;
-  return `<div class="modal-backdrop" data-action="close-settings"><section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" data-stop-click="true"><div class="modal-head"><div><div class="eyebrow lime">CONFIGURAÇÃO DO SCOUT</div><h2 id="settings-title">Conexões MCP</h2><p>Conecte múltiplos agentes e fontes sem misturar credenciais com o catálogo.</p></div><button class="icon-button" data-action="close-settings" aria-label="Fechar">${icon('close')}</button></div><div class="connection-list"><div class="list-heading"><span>Agentes configurados <b>${state.config.connections.length}</b></span><button type="button" class="text-button" data-action="new-connection">${icon('plus', 14)} Adicionar agente</button></div>${connections || '<div class="no-connections">Nenhuma fonte configurada ainda.</div>'}</div><div class="connection-status ${currentConnected ? 'online' : 'offline'}"><span class="status-dot"></span><div><strong>${currentConnected ? 'Agente habilitado' : 'Agente pausado'}</strong><small>${esc(currentEndpoint || 'Preencha um endpoint MCP abaixo')}</small></div><button class="text-button" data-action="test-connection">Testar agora</button><button class="text-button" data-action="toggle-connection">${currentConnected ? 'Pausar' : 'Ativar'}</button></div><form class="settings-form" data-form="settings"><label>Nome do agente<input name="agentName" value="${esc(currentName)}" placeholder="Agente de descoberta" required /></label><label>Função do agente<input name="role" value="${esc(currentRole)}" placeholder="Catálogo, eventos, produtos..." required /></label><label>Endpoint MCP<input name="endpoint" value="${esc(currentEndpoint)}" placeholder="https://seu-site.com/wp-json/launchradar/v1/mcp" required /></label><label>Token de acesso <span class="label-note">armazenado apenas neste navegador</span><input name="token" type="password" value="${esc(currentToken)}" placeholder="Cole o token gerado no WordPress" /></label><div class="settings-note">${icon('link', 15)} <span>A busca chama <strong>todos os agentes habilitados em paralelo</strong>. O token nunca é enviado para outro endpoint além do configurado. Use HTTPS em produção.</span></div><div class="modal-actions"><button type="button" class="ghost-button" data-action="close-settings">Cancelar</button><button type="submit" class="primary-button">${icon('check', 15)} ${editing ? 'Salvar alterações' : 'Criar agente'}</button></div></form></section></div>`;
+  return `<div class="modal-backdrop" data-action="close-settings"><section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" data-stop-click="true"><div class="modal-head"><div><div class="eyebrow lime">CONFIGURAÇÃO DO SCOUT</div><h2 id="settings-title">Conexões MCP</h2><p>O LaunchScout Core já possui MCP, persistência e token no mesmo servidor.</p></div><button class="icon-button" data-action="close-settings" aria-label="Fechar">${icon('close')}</button></div><div class="connection-list"><div class="list-heading"><span>Agentes configurados <b>${state.config.connections.length}</b></span><button type="button" class="text-button" data-action="new-connection">${icon('plus', 14)} Adicionar agente</button></div>${connections || '<div class="no-connections">Nenhuma fonte configurada ainda.</div>'}</div><div class="connection-status ${currentConnected ? 'online' : 'offline'}"><span class="status-dot"></span><div><strong>${currentConnected ? 'Agente habilitado' : 'Agente pausado'}</strong><small>${esc(currentEndpoint || 'Preencha um endpoint MCP abaixo')}</small></div><button class="text-button" data-action="test-connection">Testar agora</button><button class="text-button" data-action="toggle-connection">${currentConnected ? 'Pausar' : 'Ativar'}</button></div><form class="settings-form" data-form="settings"><label>Nome do agente<input name="agentName" value="${esc(currentName)}" placeholder="Agente de descoberta" required /></label><label>Função do agente<input name="role" value="${esc(currentRole)}" placeholder="Catálogo, eventos, produtos..." required /></label><label>Endpoint MCP<input name="endpoint" value="${esc(currentEndpoint)}" placeholder="/api/mcp" required /></label><label>Token de acesso <span class="label-note">hash salvo no servidor; exibido apenas uma vez</span><input name="token" type="password" value="${esc(currentToken)}" placeholder="Gere um token abaixo" /><button type="button" class="ghost-button token-button" data-action="generate-token">${icon('spark', 14)} Gerar token no LaunchScout Core</button></label><div class="settings-note">${icon('link', 15)} <span>A busca chama <strong>todos os agentes habilitados em paralelo</strong>. O token interno é gerado por este Node e o endpoint padrão é <strong>/api/mcp</strong>.</span></div><div class="modal-actions"><button type="button" class="ghost-button" data-action="close-settings">Cancelar</button><button type="submit" class="primary-button">${icon('check', 15)} ${editing ? 'Salvar alterações' : 'Criar agente'}</button></div></form></section></div>`;
 }
 
 function renderApp() {
@@ -208,7 +210,7 @@ function toast(message, tone = 'default') {
 }
 
 async function callMcp(connection, method, params = {}) {
-  if (!connection?.endpoint || connection.endpoint.includes('mcp.launchscout.local')) return null;
+  if (!connection?.endpoint) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
@@ -333,6 +335,13 @@ app.addEventListener('click', (event) => {
     if (!connection?.endpoint) { toast('Preencha o endpoint MCP antes de testar.'); return; }
     toast('Executando handshake MCP…');
     testConnection(connection).then((server) => toast(`Conectado: ${server.name || 'servidor MCP'} v${server.version || '—'}`, 'success')).catch((error) => toast(`Falha no handshake: ${error.message}`));
+    return;
+  }
+  if (action === 'generate-token') {
+    const connection = state.config.connections.find((item) => item.id === state.editingConnectionId);
+    const headers = connection?.token ? { Authorization: `Bearer ${connection.token}` } : {};
+    toast('Gerando token seguro no servidor…');
+    fetch('/api/auth/generate', { method: 'POST', headers }).then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'Não foi possível gerar o token.'); return payload; }).then((payload) => { state.pendingToken = payload.token; if (connection) connection.token = payload.token; saveState(); renderApp(); toast('Token gerado. Copie e guarde-o agora.', 'success'); }).catch((error) => toast(`Geração de token falhou: ${error.message}`));
     return;
   }
   if (action === 'toggle-save') {
